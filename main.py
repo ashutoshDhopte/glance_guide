@@ -1,89 +1,162 @@
 import cv2
 import mediapipe as mp
 import pyautogui
-import tkinter as tk
+import ttkbootstrap as ttk
+from ttkbootstrap.constants import *
+from tkinter import BooleanVar
+import threading
 
 # Initialize camera and libraries
-
 pyautogui.FAILSAFE = False
-cam = cv2.VideoCapture(0)
-if not cam.isOpened():
-    print("Error: Could not open camera.")
-    exit()
+global cam, running, counter
 
-face_mesh = mp.solutions.face_mesh.FaceMesh(refine_landmarks=True)
-screen_w, screen_h = pyautogui.size()
+def eye_tracking():
+    global cam, running
+    cam = cv2.VideoCapture(0)
 
-oldX, oldY = 0, 0
+    if not cam.isOpened():
+        print("Error: Could not open camera.")
+        return
 
-while True:
-    ret, frame = cam.read()
-    if not ret:
-        print("Error: Could not read frame.")
-        break
+    face_mesh = mp.solutions.face_mesh.FaceMesh(refine_landmarks=True)
+    screen_w, screen_h = pyautogui.size()
 
-    frame = cv2.flip(frame, 1)
-    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    output = face_mesh.process(rgb_frame)
+    # ALIGN TO CENTER WHEN SPAWN
+    center_x = screen_w // 2
+    center_y = screen_h // 2
+    pyautogui.moveTo(center_x, center_y)  # Move cursor to center at the start
 
-    # Check if landmarks are detected
-    landmark_points = output.multi_face_landmarks
-    frame_h, frame_w, _ = frame.shape
+    oldX, oldY = center_x, center_y  # Set initial position to center
 
-    if landmark_points:
-        landmarks = landmark_points[0].landmark
-        # Using iris landmarks for tracking eye movements
-        right_iris_landmarks = landmarks[474:478]
-        left_iris_landmarks = landmarks[469:473]
+    while running:  # Check the running flag
+        ret, frame = cam.read()
+        if not ret:
+            print("Error: Could not read frame.")
+            break
 
-        # Get the average x and y positions of the iris for more stable tracking
-        def get_avg_position(landmarks_subset):
-            x_avg = sum([landmark.x for landmark in landmarks_subset]) / len(landmarks_subset)
-            y_avg = sum([landmark.y for landmark in landmarks_subset]) / len(landmarks_subset)
-            return x_avg, y_avg
+        frame = cv2.flip(frame, 1)
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        output = face_mesh.process(rgb_frame)
 
-        right_iris_avg_x, right_iris_avg_y = get_avg_position(right_iris_landmarks)
-        left_iris_avg_x, left_iris_avg_y = get_avg_position(left_iris_landmarks)
+        # Check if landmarks are detected
+        landmark_points = output.multi_face_landmarks
+        frame_h, frame_w, _ = frame.shape
 
-        # Convert relative positions to frame dimensions
-        right_iris_x = int(right_iris_avg_x * frame_w)
-        right_iris_y = int(right_iris_avg_y * frame_h)
-        left_iris_x = int(left_iris_avg_x * frame_w)
-        left_iris_y = int(left_iris_avg_y * frame_h)
+        if landmark_points:
+            landmarks = landmark_points[0].landmark
+            right_iris_landmarks = landmarks[474:478]
+            left_iris_landmarks = landmarks[469:473]
 
-        # Calculate the average of both eyes for more stable control
-        avg_eye_x = (right_iris_avg_x + left_iris_avg_x) / 2
-        avg_eye_y = (right_iris_avg_y + left_iris_avg_y) / 2
+            # Get the average x and y positions of the iris for more stable tracking
+            def get_avg_position(landmarks_subset):
+                x_avg = sum([landmark.x for landmark in landmarks_subset]) / len(landmarks_subset)
+                y_avg = sum([landmark.y for landmark in landmarks_subset]) / len(landmarks_subset)
+                return x_avg, y_avg
 
-        # Map eye movement to screen dimensions
-        screen_x = int(avg_eye_x * screen_w)
-        screen_y = int(avg_eye_y * screen_h)
+            right_iris_avg_x, right_iris_avg_y = get_avg_position(right_iris_landmarks)
+            left_iris_avg_x, left_iris_avg_y = get_avg_position(left_iris_landmarks)
 
-        relX = screen_x - oldX
-        relY = screen_y - oldY
+            right_iris_x = int(right_iris_avg_x * frame_w)
+            right_iris_y = int(right_iris_avg_y * frame_h)
+            left_iris_x = int(left_iris_avg_x * frame_w)
+            left_iris_y = int(left_iris_avg_y * frame_h)
 
-        # Blink detection using vertical distance between eyelids
-        left_upper_eyelid = landmarks[159]  # Upper eyelid point
-        left_lower_eyelid = landmarks[145]  # Lower eyelid point
-        right_upper_eyelid = landmarks[386]  # Upper eyelid point right
-        right_lower_eyelid = landmarks[374]  # Lower eyelid point right
+            avg_eye_x = (right_iris_avg_x + left_iris_avg_x) / 2
+            avg_eye_y = (right_iris_avg_y + left_iris_avg_y) / 2
 
-        left_eye_dist = abs(left_upper_eyelid.y - left_lower_eyelid.y)
-        right_eye_dist = abs(right_upper_eyelid.y - right_lower_eyelid.y)
-        if left_eye_dist < 0.01:  # Adjust threshold based on calibration
-            pyautogui.click()
-            pyautogui.sleep(1)
-        elif right_eye_dist < 0.01:  # Adjust threshold based on calibration
-            pyautogui.scroll(relY)
-        else:
-            # Move mouse based on eye movements
-            pyautogui.moveRel(relX*8, relY*8, duration=0.01)
+            screen_x = int(avg_eye_x * screen_w)
+            screen_y = int(avg_eye_y * screen_h)
 
-        oldX = screen_x
-        oldY = screen_y
+            relX = screen_x - oldX
+            relY = screen_y - oldY
 
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+            left_upper_eyelid = landmarks[159]  
+            left_lower_eyelid = landmarks[145]  
+            right_upper_eyelid = landmarks[386]  
+            right_lower_eyelid = landmarks[374]  
 
-cam.release()
-cv2.destroyAllWindows()
+            left_eye_dist = abs(left_upper_eyelid.y - left_lower_eyelid.y)
+            right_eye_dist = abs(right_upper_eyelid.y - right_lower_eyelid.y)
+            if left_eye_dist < 0.01:  
+                pyautogui.click()
+                pyautogui.sleep(1)
+            elif right_eye_dist < 0.01:  
+                pyautogui.scroll(relY)
+            else:
+                pyautogui.moveRel(relX * 8, relY * 8, duration=0.01)
+
+            oldX = screen_x
+            oldY = screen_y
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cam.release()  # Ensure camera is released when done
+    cv2.destroyAllWindows()  # Close all OpenCV windows
+
+def toggle_eye_tracker(state):
+    global running, counter
+    if state.get():
+        print("Glance Guide: ON")
+
+        running = True  # Set the running flag to True
+        threading.Thread(target=eye_tracking, daemon=True).start()  # Start eye tracking in a separate thread
+        
+        counter += 1  # Increment the counter when tracking starts
+    else:
+        print("Glance Guide: OFF")
+        running = False  # Set the running flag to False
+
+def create_ui():
+    # Create a ttkbootstrap themed window
+    root = ttk.Window(themename="darkly")  # You can change the theme
+
+    # Set window title and size
+    root.title("Control Panel")
+    root.geometry("400x330")
+    root.resizable(width=False, height=False)
+
+    # Create a label
+    label = ttk.Label(root, text="Glance Guide 1.0", font=("Helvetica", 18))
+    label.pack(pady=20)
+
+    # Create a variable to track the state of the "switch"
+    switch_state = BooleanVar(value=False)
+
+    # Create a toggle-like switch using a Checkbutton
+    toggle_switch = ttk.Checkbutton(
+        root,
+        text="On/Off",
+        bootstyle="success-round-toggle",
+        variable=switch_state,
+        command=lambda: toggle_eye_tracker(switch_state),
+        padding=(10, 5)  # Adding padding for spacing
+    )
+    toggle_switch.pack(pady=30)
+
+    # Create a label for function explanations with left alignment, fixed width
+    function_explanation = (
+        "Instructions:\n\n"
+        "- Move the cursor with head and eye movement.\n\n"
+        "- Single click with left eye blink.\n\n"
+        "- Scroll up with right eye closed and head movement vertically down, and vice versa."
+    )
+    
+    explanation_label = ttk.Label(
+        root,
+        text=function_explanation,
+        justify='left',
+        anchor='w',
+        wraplength=350,  # Set wrap length for the label
+        width=45  # Fixed width (characters)
+    )
+    explanation_label.pack(pady=15, padx=20)
+
+    # Start the main event loop
+    root.mainloop()
+
+if __name__ == "__main__":
+    running = False  # Initialize running flag
+    counter = 0  # Initialize counter
+
+    create_ui()
