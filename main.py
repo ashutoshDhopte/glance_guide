@@ -62,12 +62,6 @@ while True:
         relX = screen_x - oldX
         relY = screen_y - oldY
 
-        # Draw landmarks on the frame
-        for iris_landmark in right_iris_landmarks + left_iris_landmarks:
-            x = int(iris_landmark.x * frame_w)
-            y = int(iris_landmark.y * frame_h)
-            cv2.circle(frame, (x, y), 3, (0, 255, 0), -1)
-
         # Blink detection using vertical distance between eyelids
         left_upper_eyelid = landmarks[159]  # Upper eyelid point
         left_lower_eyelid = landmarks[145]  # Lower eyelid point
@@ -87,8 +81,6 @@ while True:
 
         oldX = screen_x
         oldY = screen_y
-
-    # cv2.imshow("Eye Controlled Mouse", frame)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
