@@ -81,7 +81,6 @@ while True:
             pyautogui.sleep(1)
         elif right_eye_dist < 0.01:  # Adjust threshold based on calibration
             pyautogui.scroll(relY)
-            pyautogui.sleep(2)
         else:
             # Move mouse based on eye movements
             pyautogui.moveRel(relX*8, relY*8, duration=0.01)
